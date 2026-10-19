@@ -5,16 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>ODOS-Hand - Contrôle</title>
   <style>
-    /* Typographie moderne et propre */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
 
     :root {
-      --bg-color: #f8f9fa; /* Fond clair */
-      --text-color: #333333; /* Texte foncé */
-      --card-bg: #ffffff; /* Fond des cartes/onglets blanc */
-      --accent-color: #0056b3; /* Bleu assorti à ton outil */
+      --bg-color: #f8f9fa;
+      --text-color: #333333;
+      --card-bg: #ffffff;
+      --accent-color: #0056b3;
       --border-color: #e0e0e0;
       --success-color: #28a745;
+      --danger-color: #dc3545;
     }
 
     * {
@@ -42,7 +42,6 @@
       gap: 20px;
     }
 
-    /* En-tête : Image et Batterie */
     .header-section {
       background: var(--card-bg);
       border-radius: 16px;
@@ -80,10 +79,9 @@
       width: 100%;
       transition: background 0.2s;
     }
-    .btn-connect:active { background-color: #004494; }
-    .btn-connect.connected { background-color: #dc3545; } /* Rouge pour déconnecter */
+    .btn-connect:active { filter: brightness(0.9); }
+    .btn-connect.connected { background-color: var(--danger-color); }
 
-    /* Système d'onglets */
     .tabs-container {
       background: var(--card-bg);
       border-radius: 16px;
@@ -120,7 +118,6 @@
     }
     .tab-content.active { display: block; }
 
-    /* Onglet Target */
     .target-input-group {
       display: flex;
       flex-direction: column;
@@ -161,7 +158,6 @@
       transition: opacity 0.3s;
     }
 
-    /* Onglet Records */
     .records-header {
       display: flex;
       justify-content: space-between;
@@ -175,6 +171,7 @@
       padding: 8px 15px;
       border-radius: 6px;
       font-size: 0.9rem;
+      font-weight: 600;
       cursor: pointer;
     }
     .records-list {
@@ -188,7 +185,7 @@
       display: flex;
       justify-content: space-between;
       font-family: monospace;
-      font-size: 1.1rem;
+      font-size: 1rem;
     }
     .records-list li:last-child { border-bottom: none; }
   </style>
@@ -196,55 +193,68 @@
 <body>
 
   <div class="container">
-    <!-- En-tête -->
     <div class="header-section">
-      <!-- REMPLACE L'IMAGE ICI -->
-      <img src="RenduV28.png" alt="ODOS-Hand" class="device-img" id="deviceImg">
+      <img src="RenduV28.jpg" alt="ODOS-Hand" class="device-img" id="deviceImg">
       <div class="battery-info" id="batLevel">Batterie : --%</div>
-      <button class="btn-connect" id="btnConnect">Connect / Disconnect</button>
+      <button class="btn-connect" id="btnConnect">Connect</button>
     </div>
 
-    <!-- Onglets -->
     <div class="tabs-container">
       <div class="tab-buttons">
         <button class="tab-btn active" onclick="switchTab('records')">Records</button>
         <button class="tab-btn" onclick="switchTab('target')">Target</button>
       </div>
 
-      <!-- Contenu Records -->
       <div id="tab-records" class="tab-content active">
         <div class="records-header">
           <h3>Historique</h3>
           <button class="btn-sync" id="btnSync">Sync</button>
         </div>
         <ul class="records-list" id="recordsList">
-          <li><span>#1</span><span>-- cm</span></li>
-          <li><span>#2</span><span>-- cm</span></li>
-          <li style="color:#999; text-align:center; font-size:0.9rem; margin-top:10px;">Connectez l'outil pour synchroniser</li>
+          <li style="color:#888; justify-content:center;">Appareil non connecté</li>
         </ul>
       </div>
 
-      <!-- Contenu Target -->
       <div id="tab-target" class="tab-content">
         <div class="target-input-group">
           <label>Distance cible (cm)</label>
           <div class="input-wrapper">
-            <input type="number" id="targetInput" placeholder="Ex: 200" step="1" min="1">
+            <input type="number" id="targetInput" placeholder="Ex: 200" step="0.1" min="1">
             <button class="btn-send" id="btnSend">Send</button>
           </div>
-          <div class="status-msg" id="statusMsg">Valeur envoyée ! ✔</div>
+          <div class="status-msg" id="statusMsg">Valeur enregistrée ✔</div>
         </div>
       </div>
     </div>
   </div>
 
   <script>
-    // --- GESTION DE L'INTERFACE BÁSICO ---
+    // UUIDs identiques à l'ESP32
+    const SERVICE_UUID      = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+    const CHAR_BATTERY_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+    const CHAR_TARGET_UUID  = "d86b86cf-19b4-4b57-b2eb-d1cf822a1012";
+    const CHAR_RECORDS_UUID = "9a8ca9ef-e43f-4178-831e-450f3c5520d2";
+
+    let bleDevice = null;
+    let bleServer = null;
+    let charBattery = null;
+    let charTarget = null;
+    let charRecords = null;
+
+    const btnConnect = document.getElementById('btnConnect');
+    const batLevel = document.getElementById('batLevel');
+    const targetInput = document.getElementById('targetInput');
+    const btnSend = document.getElementById('btnSend');
+    const btnSync = document.getElementById('btnSync');
+    const statusMsg = document.getElementById('statusMsg');
+    const recordsList = document.getElementById('recordsList');
+
+    // Gestion des onglets
     function switchTab(tabName) {
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       
-      if(tabName === 'records') {
+      if (tabName === 'records') {
         document.querySelectorAll('.tab-btn')[0].classList.add('active');
         document.getElementById('tab-records').classList.add('active');
       } else {
@@ -253,16 +263,133 @@
       }
     }
 
-    // Animation temporaire du message de confirmation
-    document.getElementById('btnSend').addEventListener('click', () => {
-      const msg = document.getElementById('statusMsg');
-      msg.style.opacity = 1;
-      setTimeout(() => { msg.style.opacity = 0; }, 2000);
-      
-      // Ici, nous ajouterons plus tard l'appel BLE pour envoyer la valeur.
+    // Connexion / Déconnexion Web Bluetooth
+    btnConnect.addEventListener('click', async () => {
+      if (!navigator.bluetooth) {
+        alert("Web Bluetooth n'est pas pris en charge par ce navigateur. Utilisez Chrome sur Android ou Bluefy sur iPhone.");
+        return;
+      }
+
+      if (bleDevice && bleDevice.gatt.connected) {
+        bleDevice.gatt.disconnect();
+        return;
+      }
+
+      try {
+        btnConnect.textContent = "Recherche...";
+        
+        bleDevice = await navigator.bluetooth.requestDevice({
+          filters: [{ name: 'ODOS-Hand' }],
+          optionalServices: [SERVICE_UUID]
+        });
+
+        bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+        btnConnect.textContent = "Connexion...";
+        bleServer = await bleDevice.gatt.connect();
+
+        const service = await bleServer.getPrimaryService(SERVICE_UUID);
+        charBattery = await service.getCharacteristic(CHAR_BATTERY_UUID);
+        charTarget  = await service.getCharacteristic(CHAR_TARGET_UUID);
+        charRecords = await service.getCharacteristic(CHAR_RECORDS_UUID);
+
+        // Mise à jour visuelle connexion
+        btnConnect.textContent = "Disconnect";
+        btnConnect.classList.add('connected');
+
+        // Lecture initiale
+        await readBattery();
+        await readTarget();
+        await readRecords();
+
+      } catch (err) {
+        console.error(err);
+        resetUI();
+      }
     });
 
-    // --- (Le code Bluetooth sera injecté ici lors de l'étape suivante) ---
+    function onDisconnected() {
+      resetUI();
+    }
+
+    function resetUI() {
+      btnConnect.textContent = "Connect";
+      btnConnect.classList.remove('connected');
+      batLevel.textContent = "Batterie : --%";
+      recordsList.innerHTML = '<li style="color:#888; justify-content:center;">Appareil déconnecté</li>';
+      bleDevice = null;
+      bleServer = null;
+      charBattery = null;
+      charTarget = null;
+      charRecords = null;
+    }
+
+    // Lecture du niveau de batterie
+    async function readBattery() {
+      if (!charBattery) return;
+      const val = await charBattery.readValue();
+      const pct = val.getUint8(0);
+      batLevel.textContent = `Batterie : ${pct}%`;
+    }
+
+    // Lecture de la consigne actuelle
+    async function readTarget() {
+      if (!charTarget) return;
+      const val = await charTarget.readValue();
+      const str = new TextDecoder().decode(val);
+      if (str) targetInput.value = parseFloat(str);
+    }
+
+    // Lecture et affichage des 20 mesures
+    async function readRecords() {
+      if (!charRecords) return;
+      const val = await charRecords.readValue();
+      const str = new TextDecoder().decode(val);
+      recordsList.innerHTML = '';
+
+      if (!str || str.trim() === '') {
+        recordsList.innerHTML = '<li style="color:#888; justify-content:center;">Aucune mesure enregistrée</li>';
+        return;
+      }
+
+      const items = str.split(',');
+      items.forEach((item, index) => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span>#${index + 1}</span><span>${parseFloat(item).toFixed(1)} cm</span>`;
+        recordsList.appendChild(li);
+      });
+    }
+
+    btnSync.addEventListener('click', async () => {
+      if (!bleServer || !bleServer.connected) {
+        alert("Veuillez d'abord connecter l'appareil.");
+        return;
+      }
+      btnSync.textContent = "...";
+      await readBattery();
+      await readRecords();
+      btnSync.textContent = "Sync";
+    });
+
+    // Écriture de la nouvelle consigne cible
+    btnSend.addEventListener('click', async () => {
+      if (!charTarget || !bleServer || !bleServer.connected) {
+        alert("Connectez l'outil avant d'envoyer une valeur.");
+        return;
+      }
+
+      const val = parseFloat(targetInput.value);
+      if (isNaN(val) || val <= 0) {
+        alert("Veuillez entrer une distance valide en cm.");
+        return;
+      }
+
+      const data = new TextEncoder().encode(val.toString());
+      await charTarget.writeValue(data);
+
+      statusMsg.style.opacity = 1;
+      setTimeout(() => { statusMsg.style.opacity = 0; }, 2500);
+    });
   </script>
 </body>
 </html>
