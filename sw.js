@@ -1,7 +1,11 @@
-self.addEventListener('install', (e) => {
+self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-self.addEventListener('fetch', (e) => {
-  // Nécessaire pour valider le critère d'installation Chrome PWA
+self.addEventListener('activate', (event) => {
+  event.waitUntil(clients.claim());
+});
+
+self.addEventListener('fetch', (event) => {
+  event.respondWith(fetch(event.request));
 });
