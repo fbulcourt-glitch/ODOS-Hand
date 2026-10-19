@@ -1,0 +1,17 @@
+{
+  "name": "ODOS-Hand",
+  "short_name": "ODOS",
+  "description": "Interface de contrôle pour odomètre ODOS-Hand",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0056b3",
+  "icons": [
+    {
+      "src": "RenduV28.jpg",
+      "sizes": "192x192 512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}
